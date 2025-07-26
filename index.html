@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tiny Apocalypse</title>
+<style>
+    body {
+        margin:0;
+        font-family: Arial, sans-serif;
+        background:#111;
+        color:#eee;
+        display:flex;
+        flex-direction:column;
+        min-height:100vh;
+        align-items:center;
+    }
+    #bars {
+        display:flex;
+        justify-content:space-around;
+        width:100%;
+        padding:10px;
+        box-sizing:border-box;
+    }
+    .bar {
+        width:22%;
+        background:#333;
+        border-radius:4px;
+        overflow:hidden;
+        position:relative;
+        height:24px;
+        margin:0 2px;
+    }
+    .bar-inner {
+        height:100%;
+        width:50%;
+        background:green;
+        transition:width 0.3s;
+    }
+    .bar-label {
+        position:absolute;
+        top:0;left:0;right:0;bottom:0;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-size:12px;
+        pointer-events:none;
+    }
+    #event {
+        flex:1;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        text-align:center;
+        padding:20px;
+    }
+    #options {
+        display:flex;
+        width:100%;
+    }
+    .option {
+        flex:1;
+        padding:20px;
+        margin:5px;
+        font-size:18px;
+        background:#444;
+        border:none;
+        color:#fff;
+        border-radius:4px;
+        cursor:pointer;
+    }
+    .option:hover {background:#555;}
+    #gameover {
+        position:fixed;
+        top:0;left:0;right:0;bottom:0;
+        background:rgba(0,0,0,0.9);
+        color:#fff;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        text-align:center;
+        display:none;
+        padding:20px;
+        box-sizing:border-box;
+    }
+    #gameover button {
+        padding:10px 20px;
+        font-size:18px;
+        margin-top:20px;
+        background:#666;
+        color:#fff;
+        border:none;
+        border-radius:4px;
+        cursor:pointer;
+    }
+    @media (max-width:600px) {
+        .option {font-size:16px;padding:15px;}
+        .bar {height:20px;}
+    }
+</style>
+</head>
+<body>
+<div id="bars">
+    <div class="bar" id="bar-population"><div class="bar-inner"></div><div class="bar-label"></div></div>
+    <div class="bar" id="bar-food"><div class="bar-inner"></div><div class="bar-label"></div></div>
+    <div class="bar" id="bar-security"><div class="bar-inner"></div><div class="bar-label"></div></div>
+    <div class="bar" id="bar-environment"><div class="bar-inner"></div><div class="bar-label"></div></div>
+</div>
+<div id="event"></div>
+<div id="options">
+    <button class="option" id="option-left"></button>
+    <button class="option" id="option-right"></button>
+</div>
+<div id="gameover">
+    <h2 id="gameover-text"></h2>
+    <p>Runden: <span id="rounds"></span></p>
+    <p>Highscore: <span id="highscore"></span></p>
+    <button id="restart">Neustart</button>
+</div>
+<script>
+(function(){
+    const resources={population:50,food:50,security:50,environment:50};
+    let round=0;
+    const events=[
+        {text:"Ein Räubertrupp nähert sich.",left:{text:"Tribut zahlen",effect:{population:-5,food:-10,security:-5}},right:{text:"Verteidigen",effect:{population:-10,food:-5,security:10}}},
+        {text:"Ein reicher Händler bietet Nahrung an.",left:{text:"Eintauschen",effect:{food:15,population:-5}},right:{text:"Ablehnen",effect:{security:5,environment:5}}},
+        {text:"Es regnet tagelang.",left:{text:"Vorräte schützen",effect:{food:5,environment:-10}},right:{text:"Regen nutzen",effect:{food:-5,environment:15}}},
+        {text:"Krankheit breitet sich aus.",left:{text:"Heiler engagieren",effect:{population:10,food:-10}},right:{text:"Nichts tun",effect:{population:-15}}},
+        {text:"Wildtiere werden aggressiv.",left:{text:"Jagen",effect:{food:10,environment:-5}},right:{text:"Schutz suchen",effect:{security:5,population:-5}}},
+        {text:"Eine Gruppe Überlebender bittet um Aufnahme.",left:{text:"Aufnehmen",effect:{population:15,food:-10}},right:{text:"Ablehnen",effect:{population:-5,security:5}}},
+        {text:"Fabrikruinen lecken Chemikalien.",left:{text:"Aufräumen",effect:{environment:15,food:-5}},right:{text:"Ignorieren",effect:{environment:-15}}},
+        {text:"Bandenkrieg in der Nähe.",left:{text:"Schlichten",effect:{security:10,population:-5}},right:{text:"Abschotten",effect:{security:-5,population:-10}}},
+        {text:"Forschung zu erneuerbarer Energie.",left:{text:"Investieren",effect:{environment:10,food:-5}},right:{text:"Zu teuer",effect:{environment:-5,security:5}}},
+        {text:"Eine Hungersnot droht.",left:{text:"Rationen kürzen",effect:{food:10,population:-10}},right:{text:"Nahrungssuche",effect:{food:15,security:-5}}}
+    ];
+    const bars={
+        population:document.querySelector('#bar-population'),
+        food:document.querySelector('#bar-food'),
+        security:document.querySelector('#bar-security'),
+        environment:document.querySelector('#bar-environment')
+    };
+    const eventEl=document.getElementById('event');
+    const leftBtn=document.getElementById('option-left');
+    const rightBtn=document.getElementById('option-right');
+    const gameoverEl=document.getElementById('gameover');
+    const gameoverText=document.getElementById('gameover-text');
+    const roundsEl=document.getElementById('rounds');
+    const highscoreEl=document.getElementById('highscore');
+
+    function updateBars(){
+        for(const key in resources){
+            const bar=bars[key];
+            const inner=bar.querySelector('.bar-inner');
+            const label=bar.querySelector('.bar-label');
+            const val=Math.max(0,Math.min(100,resources[key]));
+            inner.style.width=val+'%';
+            if(val>60) inner.style.background='green';
+            else if(val>30) inner.style.background='yellow';
+            else inner.style.background='red';
+            label.textContent=key.charAt(0).toUpperCase()+key.slice(1)+': '+val+'%';
+        }
+    }
+
+    function nextEvent(){
+        round++; 
+        const ev=events[Math.floor(Math.random()*events.length)];
+        eventEl.textContent=ev.text;
+        leftBtn.textContent=ev.left.text;
+        rightBtn.textContent=ev.right.text;
+        leftBtn.onclick=()=>choose(ev.left.effect);
+        rightBtn.onclick=()=>choose(ev.right.effect);
+    }
+
+    function choose(effect){
+        for(const key in effect){
+            resources[key]+=effect[key];
+            resources[key]=Math.max(0,Math.min(100,resources[key]));
+        }
+        updateBars();
+        const fail=Object.keys(resources).find(k=>resources[k]<=0||resources[k]>=100);
+        if(fail){
+            endGame(fail);
+        }else{
+            nextEvent();
+        }
+    }
+
+    function endGame(fail){
+        gameoverText.textContent=fail.charAt(0).toUpperCase()+fail.slice(1)+' hat einen kritischen Wert erreicht!';
+        roundsEl.textContent=round-1;
+        const best=parseInt(localStorage.getItem('ta-highscore')||'0',10);
+        if(round-1>best){
+            localStorage.setItem('ta-highscore',round-1);
+            highscoreEl.textContent=round-1;
+        }else{
+            highscoreEl.textContent=best;
+        }
+        gameoverEl.style.display='flex';
+    }
+
+    document.getElementById('restart').onclick=start;
+
+    function start(){
+        resources.population=50;
+        resources.food=50;
+        resources.security=50;
+        resources.environment=50;
+        round=0;
+        updateBars();
+        gameoverEl.style.display='none';
+        nextEvent();
+    }
+
+    let touchStartX=null;
+    document.addEventListener('touchstart',e=>{
+        touchStartX=e.changedTouches[0].clientX;
+    });
+    document.addEventListener('touchend',e=>{
+        if(touchStartX===null) return;
+        const diff=e.changedTouches[0].clientX-touchStartX;
+        if(Math.abs(diff)>50){
+            if(diff>0){rightBtn.click();}else{leftBtn.click();}
+        }
+        touchStartX=null;
+    });
+    document.addEventListener('keydown',e=>{
+        if(e.key==='ArrowLeft') leftBtn.click();
+        if(e.key==='ArrowRight') rightBtn.click();
+    });
+
+    start();
+})();
+</script>
+</body>
+</html>
