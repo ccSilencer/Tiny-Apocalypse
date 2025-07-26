@@ -15,6 +15,19 @@
         min-height:100vh;
         align-items:center;
     }
+    h1{font-size:clamp(24px,5vw,48px);margin:10px 0;}
+    #startscreen{
+        position:fixed;
+        top:0;left:0;right:0;bottom:0;
+        background:#111;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        text-align:center;
+    }
+    #startscreen button{padding:10px 20px;font-size:20px;border:none;border-radius:4px;background:#666;color:#fff;cursor:pointer;}
+    #game{display:none;flex:1;width:100%;display:flex;flex-direction:column;align-items:center;}
     #bars {
         display:flex;
         justify-content:space-around;
@@ -54,6 +67,9 @@
         text-align:center;
         padding:20px;
     }
+    #event.card{background:#222;border-radius:8px;padding:20px;margin:10px;max-width:600px;font-size:clamp(18px,4vw,26px);}
+    .flash{animation:flash 0.2s;}
+    @keyframes flash{from{background:#fff;color:#000;}to{}}
     #options {
         display:flex;
         width:100%;
@@ -80,10 +96,14 @@
         align-items:center;
         justify-content:center;
         text-align:center;
-        display:none;
+        opacity:0;
+        visibility:hidden;
+        transition:opacity 0.5s;
         padding:20px;
         box-sizing:border-box;
+        pointer-events:none;
     }
+    #gameover.show{opacity:1;visibility:visible;pointer-events:auto;}
     #gameover button {
         padding:10px 20px;
         font-size:18px;
@@ -101,13 +121,19 @@
 </style>
 </head>
 <body>
+<div id="startscreen">
+    <h1>Tiny Apocalypse</h1>
+    <p>Highscore: <span id="start-highscore"></span></p>
+    <button id="start-btn">Start</button>
+</div>
+<div id="game">
 <div id="bars">
     <div class="bar" id="bar-population"><div class="bar-inner"></div><div class="bar-label"></div></div>
     <div class="bar" id="bar-food"><div class="bar-inner"></div><div class="bar-label"></div></div>
     <div class="bar" id="bar-security"><div class="bar-inner"></div><div class="bar-label"></div></div>
     <div class="bar" id="bar-environment"><div class="bar-inner"></div><div class="bar-label"></div></div>
 </div>
-<div id="event"></div>
+<div id="event" class="card"></div>
 <div id="options">
     <button class="option" id="option-left"></button>
     <button class="option" id="option-right"></button>
@@ -118,13 +144,14 @@
     <p>Highscore: <span id="highscore"></span></p>
     <button id="restart">Neustart</button>
 </div>
+</div>
 <script>
 (function(){
     const resources={population:50,food:50,security:50,environment:50};
     let round=0;
     const events=[
         {text:"Ein Räubertrupp nähert sich.",left:{text:"Tribut zahlen",effect:{population:-5,food:-10,security:-5}},right:{text:"Verteidigen",effect:{population:-10,food:-5,security:10}}},
-        {text:"Ein reicher Händler bietet Nahrung an.",left:{text:"Eintauschen",effect:{food:15,population:-5}},right:{text:"Ablehnen",effect:{security:5,environment:5}}},
+        {text:"Ein reicher Händler bietet Nahrung an.",left:{text:"Eintauschen",effect:{food:15,population:-5},flag:"helpedTrader"},right:{text:"Ablehnen",effect:{security:5,environment:5}}},
         {text:"Es regnet tagelang.",left:{text:"Vorräte schützen",effect:{food:5,environment:-10}},right:{text:"Regen nutzen",effect:{food:-5,environment:15}}},
         {text:"Krankheit breitet sich aus.",left:{text:"Heiler engagieren",effect:{population:10,food:-10}},right:{text:"Nichts tun",effect:{population:-15}}},
         {text:"Wildtiere werden aggressiv.",left:{text:"Jagen",effect:{food:10,environment:-5}},right:{text:"Schutz suchen",effect:{security:5,population:-5}}},
@@ -132,7 +159,21 @@
         {text:"Fabrikruinen lecken Chemikalien.",left:{text:"Aufräumen",effect:{environment:15,food:-5}},right:{text:"Ignorieren",effect:{environment:-15}}},
         {text:"Bandenkrieg in der Nähe.",left:{text:"Schlichten",effect:{security:10,population:-5}},right:{text:"Abschotten",effect:{security:-5,population:-10}}},
         {text:"Forschung zu erneuerbarer Energie.",left:{text:"Investieren",effect:{environment:10,food:-5}},right:{text:"Zu teuer",effect:{environment:-5,security:5}}},
-        {text:"Eine Hungersnot droht.",left:{text:"Rationen kürzen",effect:{food:10,population:-10}},right:{text:"Nahrungssuche",effect:{food:15,security:-5}}}
+        {text:"Eine Hungersnot droht.",left:{text:"Rationen kürzen",effect:{food:10,population:-10}},right:{text:"Nahrungssuche",effect:{food:15,security:-5}}},
+        {text:"Ein geheimnisvoller Wanderer bietet Hilfe an.",left:{text:"Annehmen",effect:{population:5,security:5},flag:"wandererHelped"},right:{text:"Misstrauen",effect:{security:-5}}},
+        {text:"Der Wanderer bittet um Unterkunft.",condition:()=>flags.wandererHelped,left:{text:"Gewähren",effect:{population:10,food:-10}},right:{text:"Ablehnen",effect:{security:5}}},
+        {text:"Ein Sturm verwüstet die Felder.",left:{text:"Schäden beheben",effect:{food:-10,environment:5}},right:{text:"Ignorieren",effect:{food:-15}}},
+        {text:"Feindliche Fraktion bietet Bündnis an.",left:{text:"Annehmen",effect:{security:10,population:-5}},right:{text:"Ablehnen",effect:{security:-10}}},
+        {text:"Forscher will Technologie teilen.",left:{text:"Unterstützen",effect:{environment:5,food:5}},right:{text:"Zu riskant",effect:{security:5}}},
+        {text:"Gerüchte über Schatz in Ruinen.",left:{text:"Expedition",effect:{food:-5,population:-5,environment:-5,security:5}},right:{text:"Risiko scheuen",effect:{population:5}}},
+        {text:"Friedliche Nomaden passieren.",left:{text:"Handeln",effect:{food:10,population:-5}},right:{text:"Weiterziehen",effect:{security:5}}},
+        {text:"Nahrungsvorräte sind kontaminiert.",left:{text:"Reinigen",effect:{food:-10}},right:{text:"Wegwerfen",effect:{food:-20,population:5}}},
+        {text:"Kult versucht Anhänger zu werben.",left:{text:"Unterdrücken",effect:{security:5,population:-5}},right:{text:"Ignorieren",effect:{population:-10}}},
+        {text:"Verlassene Militärbasis entdeckt.",left:{text:"Plündern",effect:{security:15,population:-5}},right:{text:"Respektieren",effect:{environment:5}}},
+        {text:"Waffenstillstand mit Rivalen möglich.",left:{text:"Unterzeichnen",effect:{security:10}},right:{text:"Kämpfen",effect:{population:-10,security:-5}}},
+        {text:"Epidemie bricht erneut aus.",left:{text:"Quarantäne",effect:{population:-10,security:5}},right:{text:"Heilmittel suchen",effect:{food:-10,environment:5}}},
+        {text:"Uralte Technik wird entdeckt.",left:{text:"Nutzen",effect:{environment:20,security:10}},right:{text:"Verkaufen",effect:{food:20}}},
+        {text:"Der Händler kehrt mit Geschenken zurück.",condition:()=>flags.helpedTrader,left:{text:"Dankbar annehmen",effect:{food:20,security:5}},right:{text:"Teilen",effect:{population:5}}}
     ];
     const bars={
         population:document.querySelector('#bar-population'),
@@ -147,6 +188,11 @@
     const gameoverText=document.getElementById('gameover-text');
     const roundsEl=document.getElementById('rounds');
     const highscoreEl=document.getElementById('highscore');
+    const startEl=document.getElementById('startscreen');
+    const startBtn=document.getElementById('start-btn');
+    const startHS=document.getElementById('start-highscore');
+    const gameEl=document.getElementById('game');
+    const flags={};
 
     function updateBars(){
         for(const key in resources){
@@ -163,20 +209,24 @@
     }
 
     function nextEvent(){
-        round++; 
-        const ev=events[Math.floor(Math.random()*events.length)];
+        round++;
+        const possible=events.filter(e=>!e.condition||e.condition());
+        const ev=possible[Math.floor(Math.random()*possible.length)];
         eventEl.textContent=ev.text;
         leftBtn.textContent=ev.left.text;
         rightBtn.textContent=ev.right.text;
-        leftBtn.onclick=()=>choose(ev.left.effect);
-        rightBtn.onclick=()=>choose(ev.right.effect);
+        leftBtn.onclick=()=>choose(ev.left);
+        rightBtn.onclick=()=>choose(ev.right);
     }
 
-    function choose(effect){
-        for(const key in effect){
-            resources[key]+=effect[key];
+    function choose(option){
+        if(option.flag) flags[option.flag]=true;
+        for(const key in option.effect){
+            resources[key]+=option.effect[key];
             resources[key]=Math.max(0,Math.min(100,resources[key]));
         }
+        eventEl.classList.add('flash');
+        setTimeout(()=>eventEl.classList.remove('flash'),150);
         updateBars();
         const fail=Object.keys(resources).find(k=>resources[k]<=0||resources[k]>=100);
         if(fail){
@@ -196,10 +246,10 @@
         }else{
             highscoreEl.textContent=best;
         }
-        gameoverEl.style.display='flex';
+        gameoverEl.classList.add('show');
     }
 
-    document.getElementById('restart').onclick=start;
+    document.getElementById('restart').onclick=showStart;
 
     function start(){
         resources.population=50;
@@ -208,7 +258,8 @@
         resources.environment=50;
         round=0;
         updateBars();
-        gameoverEl.style.display='none';
+        gameoverEl.classList.remove('show');
+        gameEl.style.display='flex';
         nextEvent();
     }
 
@@ -220,16 +271,39 @@
         if(touchStartX===null) return;
         const diff=e.changedTouches[0].clientX-touchStartX;
         if(Math.abs(diff)>50){
-            if(diff>0){rightBtn.click();}else{leftBtn.click();}
+            if(startEl.style.display!=='none'){
+                startGame();
+            }else{
+                if(diff>0){rightBtn.click();}else{leftBtn.click();}
+            }
         }
         touchStartX=null;
     });
     document.addEventListener('keydown',e=>{
+        if(startEl.style.display!=='none'){
+            if(e.key.startsWith('Arrow')||e.key==='Enter' || e.key===' '){startGame();}
+            return;
+        }
         if(e.key==='ArrowLeft') leftBtn.click();
         if(e.key==='ArrowRight') rightBtn.click();
     });
 
-    start();
+    startBtn.onclick=startGame;
+
+    function showStart(){
+        gameEl.style.display='none';
+        startEl.style.display='flex';
+        startHS.textContent=localStorage.getItem('ta-highscore')||0;
+    }
+
+    function startGame(){
+        startEl.style.display='none';
+        flags.wandererHelped=false;
+        flags.helpedTrader=false;
+        start();
+    }
+
+    showStart();
 })();
 </script>
 </body>
